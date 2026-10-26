@@ -1,4 +1,4 @@
-name: Windows
+name: Mihon Desktop App
 
 on:
   push:
@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   release:
-    name: Build and release Mihon for Windows
+    name: Build and release Mihon Desktop App
     runs-on: 'windows-2025'
 
     steps:
@@ -64,7 +64,7 @@ jobs:
         run: |
           $tag = "windows-$env:MIHON_TAG"
           $notes = @"
-          Mihon for Windows $env:LAUNCHER_VERSION, published alongside [Mihon $env:MIHON_TAG](https://github.com/mihonapp/mihon/releases/tag/$env:MIHON_TAG).
+          Mihon Desktop App $env:LAUNCHER_VERSION, published alongside [Mihon $env:MIHON_TAG](https://github.com/mihonapp/mihon/releases/tag/$env:MIHON_TAG).
 
           Download **Mihon.exe** and run it. It sets up Android, installs the official Mihon app, and from then on installs every new Mihon release by itself whenever you open it. See [windows/README.md](https://github.com/$env:GITHUB_REPOSITORY/blob/main/windows/README.md) for details.
 
@@ -76,6 +76,6 @@ jobs:
             gh release edit $tag --notes $notes --repo $env:GITHUB_REPOSITORY
           } else {
             gh release create $tag out/Mihon.exe --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA `
-              --title "Mihon $env:MIHON_TAG for Windows" --notes $notes --latest
+              --title "Mihon Desktop App (Mihon $env:MIHON_TAG)" --notes $notes --latest
           }
           "Published $tag with launcher $env:LAUNCHER_VERSION." >> $env:GITHUB_STEP_SUMMARY
