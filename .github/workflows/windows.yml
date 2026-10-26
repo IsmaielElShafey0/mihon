@@ -1,0 +1,81 @@
+name: Windows
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows.yml'
+  schedule:
+    # Look for a new Mihon release every 6 hours.
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release
+
+jobs:
+  release:
+    name: Build and release Mihon for Windows
+    runs-on: 'windows-2025'
+
+    steps:
+      - name: Find the latest Mihon release
+        id: mihon
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          $tag = gh release view --repo mihonapp/mihon --json tagName --jq .tagName
+          if (-not $tag) { throw 'Could not read the latest Mihon release.' }
+          gh release view "windows-$tag" --repo $env:GITHUB_REPOSITORY *> $null
+          $exists = $LASTEXITCODE -eq 0
+          # Scheduled runs only publish when Mihon has a release this fork hasn't built yet.
+          $skip = $exists -and $env:EVENT -eq 'schedule'
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "skip=$($skip.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          if ($skip) { "windows-$tag is already published." >> $env:GITHUB_STEP_SUMMARY }
+          exit 0
+
+      - name: Clone repo
+        if: steps.mihon.outputs.skip != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build Mihon.exe
+        if: steps.mihon.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          dotnet build windows/launcher/MihonLauncher.csproj -c Release -o out `
+            -p:Version=1.1.${{ github.run_number }} `
+            -p:LauncherRepository=${{ github.repository }}
+
+      - name: Publish release
+        if: steps.mihon.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MIHON_TAG: ${{ steps.mihon.outputs.tag }}
+          LAUNCHER_VERSION: 1.1.${{ github.run_number }}
+        run: |
+          $tag = "windows-$env:MIHON_TAG"
+          $notes = @"
+          Mihon for Windows $env:LAUNCHER_VERSION, published alongside [Mihon $env:MIHON_TAG](https://github.com/mihonapp/mihon/releases/tag/$env:MIHON_TAG).
+
+          Download **Mihon.exe** and run it. It sets up Android, installs the official Mihon app, and from then on installs every new Mihon release by itself whenever you open it. See [windows/README.md](https://github.com/$env:GITHUB_REPOSITORY/blob/main/windows/README.md) for details.
+
+          Mihon.exe isn't code-signed, so Windows SmartScreen may warn about it: choose **More info → Run anyway**.
+          "@
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag out/Mihon.exe --clobber --repo $env:GITHUB_REPOSITORY
+            gh release edit $tag --notes $notes --repo $env:GITHUB_REPOSITORY
+          } else {
+            gh release create $tag out/Mihon.exe --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA `
+              --title "Mihon $env:MIHON_TAG for Windows" --notes $notes --latest
+          }
+          "Published $tag with launcher $env:LAUNCHER_VERSION." >> $env:GITHUB_STEP_SUMMARY
